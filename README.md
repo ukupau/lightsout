@@ -38,5 +38,5 @@ This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md
 ## Links
 
 * Steve Gibson [Lights Out for the SBC6120/FP6120](https://www.grc.com/pdp-8/lightsout-sbc.htm)
-* (asm80 online assembler](https://www.asm80.com/)
+* [asm80](https://www.asm80.com/) online assembler
 * Altair-Duino [kit](https://www.altairduino.com/)
