@@ -33,7 +33,7 @@ A specific pattern of on and off switches will turn off all the LEDs.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md) file for details
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details
 
 ## Links
 
