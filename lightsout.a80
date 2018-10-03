@@ -1,0 +1,276 @@
+                    ; 
+                    ; Lights out
+                    ; for the AltairDuino
+                    ; 
+                    ; Inspired by Steve Gibson's Lights Out puzzle
+                    ; for the SBC6120/PDP-8 front panel.
+                    ; 
+                    ; In this version there are only 8 switches and
+                    ; LEDs. LEDs per switch is fixed at 2.
+                    ; There is no hint mode.
+                    ; 
+BEGIN:              
+            LXI     sp,0x0100 ; initialize stack, end of 256 byte page
+
+                    ; 
+                    ; Randomize to calculate an answer value
+                    ; 
+GENANS:             
+            CALL    RNDIZE ; randomize until switch toggle
+RETRY:      CALL    RANDOM ; get next random value
+            ORA     a ; test for 0, want 1 or more
+            JZ      RETRY ; reject 0 value
+            STA     ANSWER ; save answer
+            CALL    RNDIZE2 ; continue randomize until 2nd switch toggle
+
+                    ; 
+                    ; Assign LED pairs for each of the switches
+                    ; 
+SETUP:              
+            LXI     d,SWITCHES + 7 ; current end of choice list
+            MVI     c,28 ; start with 28 possible choices for 8 switches
+
+NEXTSW:             
+            CALL    RANDOM ; get random value
+            CALL    MOD ; scale down to size
+
+            LXI     h,CHOICES ; start of choices list
+            ADD     l ; add random value to lower 8 bits of address
+            MOV     l,a ; set address lower 8 bits
+            MOV     b,m ; read selected value
+            LDAX    d ; read last value
+            MOV     m,a ; move to hole left by selected value
+            MOV     a,b ; get selected
+            STAX    d ; ...and save to end of list
+
+            DCX     d ; shorten end of list by 1
+            DCR     c ; decrement counter
+            MVI     a,20 ; stop after 8 switches (20 remaining values)
+            CMP     c 
+            JNZ     NEXTSW 
+
+                    ; 
+                    ; Play
+                    ; 
+                    ; Register D should always hold the current LED display.
+                    ; The next LED display value is calculated in E.
+                    ; E replaces D when done.
+                    ; 
+BEGIN:              
+                    ; 
+                    ; Calculate initial LED display value
+                    ; The answer specifies which switches must be toggled
+                    ; to clear all LEDs.
+                    ; 
+            LXI     d,0 ; init d & e to all lights off (0)
+            LDA     ANSWER ; answer specifies which switches to toggle
+            MOV     c,a ; save 8 bits representing switch settings
+            MVI     b,8 ; number of bits to test
+            LXI     h,SWITCHES ; address of first switch
+            CALL    LOOPSW ; loop through switches and calc the display value
+            MOV     a,e ; get calculated value
+            STA     LIGHTS ; this is the initial value
+
+                    ; 
+                    ; Start game
+                    ; 
+RESUME:             ; Existing game can be restarted here
+            LDA     LIGHTS ; initial lights address
+            MOV     d,a ; d is current lights value
+            MOV     e,d ; temp lights value also same value
+            LDAX    d ; show lights
+
+MAIN:               
+            IN      SWPORT ; read current switch settings
+            MOV     c,a ; save current switch settings
+            MVI     b,8 ; number of bits to test
+            LXI     h,SWITCHES ; address of first switch
+            CALL    LOOPSW ; loop through switches and calc the display value
+            MOV     d,e ; update lights with new value
+            LDAX    d ; show lights
+
+                    ; Wait here a bit
+                    ; Constant polling of the switches will light all LEDs
+                    ; A delay here will minimize this to a short flicker.
+            LXI     b,0x04 ; 16-bit increment amount. higher value = faster.
+            LXI     h,0x00 ; init 16-bit counter
+WAIT:               
+            LDAX    d ; show LEDs
+            DAD     b ; increment 16-bit counter
+            JNC     WAIT 
+
+            LDA     LIGHTS ; re-read initial LED display value
+            MOV     e,a ; reset E back to initial lights value
+
+            JMP     MAIN 
+
+                    ; 
+                    ; Loop through all 8 switch values and calculate
+                    ; the LED display value.
+                    ; Shift through 8 bits of the switch settings
+                    ; to determine which are on.
+LOOPSW:             
+            LDAX    d ; show lights
+            MOV     a,c ; restore switch settings
+            RLC     ; test if next switch is on (carry = 1)
+            MOV     c,a ; save remaining switch settings
+            LDAX    d ; show lights
+            JNC     SWOFF 
+                    ; switch on
+            MOV     a,m ; get switch value
+            XRA     e ; xor with temp lights value
+            MOV     e,a ; update temp lights value
+SWOFF:              
+            INX     h ; address of next switch value
+            DCR     b ; decrement bit counter
+            JNZ     LOOPSW 
+            RET     
+
+SWPORT      EQU     0xFF 
+
+                    ; The randomly selected answer pattern will be
+                    ; stored here.
+                    ; Turns out there can be more than one solution to the puzzle.
+                    ; Testing has shown maybe 2 or 4 different switch patterns 
+                    ; can turn out the lights.
+ANSWER:     DB      0x00 
+LIGHTS:     DB      0xFF ; initial lights value when all switches are off
+
+                    ; 
+                    ; All possible LED pairs
+                    ; For 8 LEDs there are 28 combinations
+                    ; At the end of the selection process, the 8 selected
+                    ; values will be at the end of the list (addressable
+                    ; by SWITCHES).
+                    ; 
+CHOICES:            
+            DB      0x81,0x82,0x84,0x88,0x90,0xA0,0xC0 
+            DB      0x41,0x42,0x44,0x48,0x50,0x60 
+            DB      0x21,0x22,0x24,0x28,0x30 
+            DB      0x11,0x12 
+SWITCHES:           ; last 8 values of list
+            DB      0x14,0x18 
+            DB      0x09,0x0A,0x0C 
+            DB      0x05,0x06 
+            DB      0x03 
+ENDDATA:            
+
+                    ; 
+                    ; Generate random numbers until a switch is toggled
+                    ; Watch out for switches that may already be high.
+                    ; These will have to be ignored.
+RNDIZE:             
+            IN      SWPORT ; get initial switch value
+            XRI     0xff ; create mask which ignores switches already on
+            MOV     b,a ; save mask
+
+TESTSW:             ; loop until user toggles a switch
+                    ; note: a beneficial side effect of reading the switches
+                    ; is that all LEDs will light.
+            CALL    RANDOM ; get random value
+            IN      SWPORT ; get current switches
+            ANA     b ; test for any switch toggled on
+            JZ      TESTSW ; repeat if no change or less
+            RET     
+
+                    ; 
+                    ; Generate random numbers until all switches off
+                    ; 
+RNDIZE2:            
+            CALL    RANDOM ; get random value
+            IN      SWPORT ; get initial switch value
+            ORA     a ; test value for 0
+            JNZ     RNDIZE2 ; repeat until zero
+            RET     
+
+                    ; 
+                    ; Size random number down to 0 to C.
+                    ; Not the best way to uniformly scale down to
+                    ; a range, but good enough for this purpose.
+MOD:                
+            CMP     c ; C = divisor
+            RC      ; done if total less than divisor
+            SUB     c ; subtract divisor
+            JMP     MOD 
+
+                    ; 
+                    ; Generate random 8 bit value
+                    ; 
+                    ; Based on this article:
+                    ; http://www.donnelly-house.net/programming/cdp1802/8bitPRNGtest.html
+                    ; 
+RANDOM:             
+            PUSH    b 
+            PUSH    d 
+            PUSH    h 
+
+            LDA     VAR_X ; load X
+            MOV     d,a ; save X
+            ANI     0x1f ; strip top 3 bits
+            RLC     ; shift 3 times
+            RLC     ; .
+            RLC     ; .
+            XRA     d ; XOR with X
+            MOV     d,a ; save T
+            ANI     0xfc ; strip bottom 2 bits
+            RRC     ; shift 2 times
+            RRC     ; .
+            XRA     d ; XOR with T
+            MOV     d,a ; save T for later
+
+                    ; shift working values
+            LDA     VAR_Z ; load Z
+            LHLD    VAR_Y ; load Y & W
+            SHLD    VAR_X ; X <- Y, Z <-W
+            STA     VAR_Y ; Y <- Z,
+
+                    ; H has original W value
+            MOV     a,h 
+            ANI     0xe0 ; strip bottom 5 bits
+            RRC     ; shift 5 times
+            RRC     ; .
+            RRC     ; .
+            RRC     ; .
+            RRC     ; .
+            XRA     h ; XOR with W
+            XRA     d ; XOR with T
+            STA     VAR_W ; save W
+            POP     h 
+            POP     d 
+            POP     b 
+            RET     
+
+VAR_X:      DB      21 
+VAR_Z:      DB      181 
+VAR_Y:      DB      229 
+VAR_W:      DB      51 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

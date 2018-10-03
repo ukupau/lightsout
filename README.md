@@ -4,7 +4,7 @@ Lights out puzzle for the Altair 8800 front panel
 
 ## Description
 This was an attempt to do something fun with the Altair front panel.
-After doing some blinkenlights, I waa looking for a second project.
+After doing some blinkenlights, I was looking for a second project.
 I found Steve Gibson's puzzle game that he wrote for his PDP 8 front panel.
 My version was kept simple as I'm not that proficient at assembly and wanted to keep it within a 256 byte page.
 As the Altair front panel is somewhat limited in its ability to interact with the user, it just makes use of the 8 leftmost
